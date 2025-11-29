@@ -1,120 +1,45 @@
 #include <iostream>
-#include <fstream>
-#include <sstream>
 #include <vector>
-#include <tuple>
-#include <string>
-#include <chrono>
-#include <algorithm>
-
 using namespace std;
-using namespace chrono;
-
-float average(const vector<float>& lst) {
-    if (lst.empty()) return 0.0;
-    float sum = 0.0;
-    for (float v : lst) sum += v;
-    return sum / lst.size();
-}
 
 int main() {
-    vector<int> timestamps;
-    vector<float> prices;
+    cout << "QuantLag – Simple Latency Simulation\n";
 
+    vector<float> prices = {100, 101, 102, 103, 104, 105, 106};
+    int n = prices.size();
 
-    ifstream file("tick_data.csv");
-    if (!file.is_open()) {
-        cerr << "Failed to open tick_data.csv" << endl;
-        return 1;
+    int low_latency = 10;
+    int high_latency = 100;
+
+    vector<float> pnl_low;
+    vector<float> pnl_high;
+
+    for (int i = 0; i < n - 2; i++) {
+        float entry_low = prices[i + 1];
+        float entry_high = prices[i + 2];
+
+        float exit_low = prices[i + 2];
+        float exit_high = prices[i + 3];
+
+        pnl_low.push_back(exit_low - entry_low);
+        pnl_high.push_back(exit_high - entry_high);
     }
 
-    string line;
-    getline(file, line);  // i am skiping header here
-    while (getline(file, line)) {
-        stringstream ss(line);
-        string token;
-        getline(ss, token, ',');
-        int timestamp = stoi(token);
-        timestamps.push_back(timestamp);
-
-        getline(ss, token, ',');
-        float price = stof(token);
-        prices.push_back(price);
-
-        // i am sking bid , ask price as they are not needed
-    }
-    file.close();
-
-    int n_ticks = timestamps.size();
-
-    
-    vector<int> signals;
-    int window = 5;
-    float threshold = 0.2;
-    for (int i = window; i < n_ticks; ++i) {
-        float price_change = prices[i] - prices[i - window];
-        if (price_change > threshold) {
-            signals.push_back(timestamps[i]);
-        }
+    float avg_low = 0, avg_high = 0, slip = 0;
+    for (int i = 0; i < pnl_low.size(); i++) {
+        avg_low += pnl_low[i];
+        avg_high += pnl_high[i];
+        slip += (pnl_low[i] - pnl_high[i]);
     }
 
-    
-    vector<string> latency_labels = {"low_latency", "high_latency"};
-    vector<int> latencies = {10, 100};
-    vector<vector<tuple<int, int, float, float, float>>> results(2);
+    avg_low /= pnl_low.size();
+    avg_high /= pnl_high.size();
+    slip /= pnl_low.size();
 
-    auto sim_start = high_resolution_clock::now();
-
-    for (int l = 0; l < 2; ++l) {
-        int latency = latencies[l];
-        for (int signal_time : signals) {
-            int exec_time = signal_time + latency;
-            float entry_price = -1, exit_price = -1;
-
-            for (int i = 0; i < n_ticks; ++i) {
-                if (timestamps[i] >= exec_time) {
-                    entry_price = prices[i];
-                    break;
-                }
-            }
-            if (entry_price < 0) continue;
-
-            int exit_time = exec_time + 5000;
-            for (int i = 0; i < n_ticks; ++i) {
-                if (timestamps[i] >= exit_time) {
-                    exit_price = prices[i];
-                    break;
-                }
-            }
-            if (exit_price < 0) continue;
-
-            float pnl = exit_price - entry_price;
-            results[l].push_back(make_tuple(signal_time, exec_time, entry_price, exit_price, pnl));
-        }
-    }
-
-    auto sim_end = high_resolution_clock::now();
-    duration<double> sim_time = sim_end - sim_start;
-    cout << "C++ simulation took " << sim_time.count() << " seconds\n";
-
-    
-    vector<float> low_pnls, high_pnls, slippages;
-    for (const auto& r : results[0]) low_pnls.push_back(get<4>(r));
-    for (const auto& r : results[1]) high_pnls.push_back(get<4>(r));
-
-    size_t trade_count = min(results[0].size(), results[1].size());
-    for (size_t i = 0; i < trade_count; ++i) {
-        float low_price = get<2>(results[0][i]);
-        float high_price = get<2>(results[1][i]);
-        slippages.push_back(high_price - low_price);
-    }
-
-    cout << "\n--- Summary ---" << endl;
-    cout << "Low Latency Avg PnL: " << average(low_pnls) << endl;
-    cout << "High Latency Avg PnL: " << average(high_pnls) << endl;
-    cout << "Avg Slippage: " << average(slippages) << endl;
-    cout << "Trades (Low Latency): " << low_pnls.size() << endl;
-    cout << "Trades (High Latency): " << high_pnls.size() << endl;
+    cout << "\n--- RESULT ---\n";
+    cout << "Avg PnL Low Latency: " << avg_low << endl;
+    cout << "Avg PnL High Latency: " << avg_high << endl;
+    cout << "Average Slippage: " << slip << endl;
 
     return 0;
 }
